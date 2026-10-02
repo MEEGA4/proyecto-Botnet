@@ -95,23 +95,41 @@ cómo crece el tráfico de forma proporcional.
 
 ## Análisis en Wireshark / IO Graphs
 
-**Filtro de captura/visualización** en la víctima (ajusta IP y puerto):
+Wireshark distingue **dos tipos de filtro** con sintaxis distinta — no los mezcles:
+
+**Filtro de VISUALIZACIÓN** (display filter — `Analyze ▸ Display Filters`, la barra
+verde superior). Sintaxis con `==` y `&&`:
 
 ```
 udp.port == 9999 && ip.dst == 192.168.1.50
 ```
+
+**Filtro de CAPTURA** (capture filter — `Capture ▸ Options`, antes de capturar; sintaxis
+BPF, distinta):
+
+```
+udp port 9999 and dst host 192.168.1.50
+```
+
+Para la demo basta con el filtro de visualización; el de captura solo si quieres reducir
+el volumen capturado de entrada.
 
 **IO Graph** (`Statistics ▸ I/O Graph`):
 
 - Eje Y: prueba con **Packets** y con **Bytes** (`SUM(frame.len)`).
 - Intervalo: `100 ms` o `1 s`.
 - Añade una gráfica por nº de orígenes si quieres, o deja una sola y verás los escalones.
-- Para contar zombis distintos: `Statistics ▸ Endpoints ▸ IPv4` → nº de IPs origen.
+- Para contar zombis distintos:
+  - **Máquinas distintas** (ideal): `Statistics ▸ Endpoints ▸ IPv4` → nº de IPs origen.
+  - **Varios zombis en el mismo PC** (opción B): comparten IP, así que cuenta por
+    **endpoint (IP + puerto de origen)**: `Statistics ▸ Conversations ▸ UDP`. El
+    `victim.py` ya muestra esta columna "zombis" (endpoints `IP:puerto` distintos).
 
 Qué mostrar/explicar:
 - Con N zombis, los **pps y los bytes/s son ~N veces** los de 1 zombi.
-- La víctima recibe tráfico de **múltiples IPs de origen** simultáneas (naturaleza distribuida).
-- El `victim.py` corrobora numéricamente lo mismo que el IO Graph.
+- La víctima recibe tráfico de **varios orígenes** simultáneos (naturaleza distribuida):
+  N IPs si son N máquinas, o N endpoints `IP:puerto` si levantas varios zombis por máquina.
+- El `victim.py` corrobora numéricamente lo mismo que el IO Graph (columnas `IPs` y `zombis`).
 
 ## Posibles preguntas del profesor y contramedidas
 
@@ -135,3 +153,8 @@ El profe suele preguntar por la **contramedida** de la técnica. Para un flood U
 - `--size` tamaño del payload en bytes (relaciona pps con ancho de banda).
 - `--broadcast` dirección de broadcast de tu subred (muy importante en red real).
 - `--control-port` puerto del canal C2 (por defecto 50000).
+
+**Topes de seguridad** (en `common.py`): la simulación está acotada —
+`MAX_DURATION=60s`, `MAX_PPS=20000`, `MAX_SIZE=1472B`. Tanto el comandante como los
+zombis recortan cualquier valor a estos límites; `pps<=0` no desactiva las pausas, se
+fuerza a 1. Es una simulación «suavizada», no un flood sin límites.

