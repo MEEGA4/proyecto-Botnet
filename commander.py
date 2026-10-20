@@ -1,5 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """C2 de laboratorio para iniciar una prueba de carga HTTP acotada."""
+
+from __future__ import print_function
 
 import argparse
 import json
@@ -9,6 +12,7 @@ import sys
 from common import (
     CAMPAIGN_TOKEN,
     CONTROL_PORT,
+    HTTP_PATH,
     MAX_DURATION,
     MAX_RPS,
     MAX_SIZE,
@@ -17,7 +21,7 @@ from common import (
 )
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser():
     parser = argparse.ArgumentParser(description="C2 del laboratorio HTTP.")
     parser.add_argument("-t", "--target", required=True, help="IPv4 privada o loopback del servidor")
     parser.add_argument("-p", "--port", type=int, required=True, help="Puerto HTTP del servidor")
@@ -33,12 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--control-port",
         type=int,
         default=CONTROL_PORT,
-        help=f"Puerto UDP donde escuchan los clientes (def. {CONTROL_PORT})",
+        help="Puerto UDP donde escuchan los clientes (def. {})".format(CONTROL_PORT),
     )
     return parser
 
 
-def build_order(args: argparse.Namespace) -> dict:
+def build_order(args):
     return {
         "cmd": "http_load_test",
         "target_ip": args.target,
@@ -50,14 +54,14 @@ def build_order(args: argparse.Namespace) -> dict:
     }
 
 
-def main() -> int:
+def main():
     args = build_parser().parse_args()
     if not is_lab_target(args.target):
-        print(f"[!] Objetivo rechazado: {args.target} no es una IPv4 privada/loopback.")
+        print("[!] Objetivo rechazado: {} no es una IPv4 privada/loopback.".format(args.target))
         print("    Esta prueba solo opera dentro de la red del laboratorio.")
         return 1
     if not (0 < args.port < 65536):
-        print(f"[!] Puerto invalido: {args.port}")
+        print("[!] Puerto invalido: {}".format(args.port))
         return 1
 
     order = build_order(args)
@@ -70,11 +74,12 @@ def main() -> int:
         sock.close()
 
     print("[*] Orden de prueba HTTP enviada por broadcast:")
-    print(f"      broadcast  -> {args.broadcast}:{args.control_port}")
-    print(f"      servidor   -> http://{args.target}:{args.port}/load-test")
+    print("      broadcast  -> {}:{}".format(args.broadcast, args.control_port))
+    print("      servidor   -> http://{}:{}{}".format(args.target, args.port, HTTP_PATH))
     print(
-        f"      duracion   -> {order['duration']}s   "
-        f"rps/cliente -> {order['rps']}   cuerpo -> {order['size']}B"
+        "      duracion   -> {}s   rps/cliente -> {}   cuerpo -> {}B".format(
+            order["duration"], order["rps"], order["size"]
+        )
     )
     return 0
 

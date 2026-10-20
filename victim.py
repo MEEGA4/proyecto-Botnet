@@ -1,25 +1,33 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """Servidor HTTP y medidor para la prueba de carga del laboratorio."""
+
+from __future__ import print_function
 
 import argparse
 import csv
-from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+try:
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from socketserver import ThreadingMixIn
+except ImportError:
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+    from SocketServer import ThreadingMixIn
+import sys
 import threading
 import time
 
 from common import CAMPAIGN_TOKEN, HTTP_PATH
 
 
-@dataclass(frozen=True)
-class MetricsSnapshot:
-    requests: int
-    body_bytes: int
-    source_ips: set[str]
-    zombie_ids: set[str]
+class MetricsSnapshot(object):
+    def __init__(self, requests, body_bytes, source_ips, zombie_ids):
+        self.requests = requests
+        self.body_bytes = body_bytes
+        self.source_ips = source_ips
+        self.zombie_ids = zombie_ids
 
 
-class MetricWindow:
+class MetricWindow(object):
     def __init__(self):
         self._lock = threading.Lock()
         self._requests = 0
@@ -27,14 +35,14 @@ class MetricWindow:
         self._source_ips = set()
         self._zombie_ids = set()
 
-    def record(self, source_ip: str, zombie_id: str, body_bytes: int):
+    def record(self, source_ip, zombie_id, body_bytes):
         with self._lock:
             self._requests += 1
             self._body_bytes += body_bytes
             self._source_ips.add(source_ip)
             self._zombie_ids.add(zombie_id)
 
-    def snapshot(self) -> MetricsSnapshot:
+    def snapshot(self):
         with self._lock:
             result = MetricsSnapshot(
                 self._requests,
@@ -49,11 +57,11 @@ class MetricWindow:
             return result
 
 
-class LabHTTPServer(ThreadingHTTPServer):
+class LabHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
     def __init__(self, server_address, handler_class):
-        super().__init__(server_address, handler_class)
+        HTTPServer.__init__(self, server_address, handler_class)
         self.metrics = MetricWindow()
 
 
@@ -73,7 +81,7 @@ class LoadTestHandler(BaseHTTPRequestHandler):
         self.server.metrics.record(self.client_address[0], zombie_id, len(body))
         self._respond(204)
 
-    def _respond(self, status: int):
+    def _respond(self, status):
         self.send_response(status)
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -82,8 +90,14 @@ class LoadTestHandler(BaseHTTPRequestHandler):
         pass
 
 
-def create_server(bind: str, port: int) -> LabHTTPServer:
+def create_server(bind, port):
     return LabHTTPServer((bind, port), LoadTestHandler)
+
+
+def open_csv_writer(path):
+    if sys.version_info[0] == 2:
+        return open(path, "wb")
+    return open(path, "w", newline="", encoding="utf-8")
 
 
 def main():
@@ -105,12 +119,14 @@ def main():
     csv_file = None
     csv_writer = None
     if args.csv:
-        csv_file = open(args.csv, "w", newline="", encoding="utf-8")
+        csv_file = open_csv_writer(args.csv)
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(["label", "epoch", "segundo", "rps", "kbps", "ips", "zombis"])
 
-    print(f"[victima] Escuchando HTTP en {args.bind}:{args.port}{HTTP_PATH}. Ctrl+C para salir.")
-    print(f"[victima] {'tiempo':>8} | {'requests/s':>12} | {'KB/s':>10} | {'IPs':>5} | {'zombis':>6}")
+    print("[victima] Escuchando HTTP en {}:{}{}. Ctrl+C para salir.".format(args.bind, args.port, HTTP_PATH))
+    print("[victima] {:>8} | {:>12} | {:>10} | {:>5} | {:>6}".format(
+        "tiempo", "requests/s", "KB/s", "IPs", "zombis"
+    ))
     started_at = time.time()
     last_report = started_at
 
@@ -122,19 +138,24 @@ def main():
                 elapsed = now - last_report
                 snapshot = server.metrics.snapshot()
                 rps = snapshot.requests / elapsed
-                kbps = snapshot.body_bytes / 1024 / elapsed
+                kbps = snapshot.body_bytes / 1024.0 / elapsed
                 second = now - started_at
                 print(
-                    f"[victima] {second:>7.0f}s | {rps:>12,.0f} | {kbps:>10,.1f} | "
-                    f"{len(snapshot.source_ips):>5} | {len(snapshot.zombie_ids):>6}"
+                    "[victima] {:>7.0f}s | {:>12,.0f} | {:>10,.1f} | {:>5} | {:>6}".format(
+                        second,
+                        rps,
+                        kbps,
+                        len(snapshot.source_ips),
+                        len(snapshot.zombie_ids),
+                    )
                 )
                 if csv_writer:
                     csv_writer.writerow([
                         args.label,
-                        f"{now:.3f}",
-                        f"{second:.0f}",
-                        f"{rps:.0f}",
-                        f"{kbps:.1f}",
+                        "{:.3f}".format(now),
+                        "{:.0f}".format(second),
+                        "{:.0f}".format(rps),
+                        "{:.1f}".format(kbps),
                         len(snapshot.source_ips),
                         len(snapshot.zombie_ids),
                     ])
@@ -142,7 +163,7 @@ def main():
                 last_report = now
 
             if args.run_seconds and now - started_at >= args.run_seconds:
-                print(f"[victima] Fin automatico tras {args.run_seconds}s.")
+                print("[victima] Fin automatico tras {}s.".format(args.run_seconds))
                 break
     except KeyboardInterrupt:
         print("\n[victima] Saliendo.")
