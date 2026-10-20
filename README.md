@@ -12,11 +12,6 @@ botnet sencilla para experimentar con seguridad ofensiva **en un laboratorio ais
 
 **Grupo:** Gorka Villalba, Jon Urkidi, Fran Martin, Alejandro Martinez, Gorka Bidaurratzaga.
 
-> ⚠️ **Alcance y ética.** Esto se usa **solo** en la red del laboratorio y contra
-> máquinas propias. El código incluye un guardarrail: los zombis y el comandante
-> **rechazan cualquier objetivo que no sea una IP privada / loopback** (RFC1918,
-> 127.0.0.0/8, 169.254.0.0/16). Dirigir tráfico de este tipo contra sistemas ajenos
-> es un ataque de denegación de servicio y es ilegal.
 
 ## Archivos
 
